@@ -1,0 +1,17 @@
+1. IGNORE EVERYTHING BY DEFAULT (Stops scanning your hard drive)
+
+/*
+
+2. ALLOWLIST (Only include these project files)
+
+!/assets/
+!/src/
+!app.json
+!eas.json
+!package.json
+!package-lock.json
+!babel.config.js
+!tsconfig.json
+!metro.config.js
+!.easignore
+!.gitignore
