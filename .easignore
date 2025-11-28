@@ -1,8 +1,7 @@
-1. IGNORE EVERYTHING BY DEFAULT (Stops scanning your hard drive)
+# 1. IGNORE EVERYTHING BY DEFAULT (Stops scanning your hard drive)
+*
 
-/*
-
-2. ALLOWLIST (Only include these project files)
+# 2. ALLOWLIST (Only include these project files)
 
 !/assets/
 !/src/
@@ -15,3 +14,5 @@
 !metro.config.js
 !.easignore
 !.gitignore
+!eslint.config.js
+!expo-env.d.ts
