@@ -1,18 +1,30 @@
-# 1. IGNORE EVERYTHING BY DEFAULT (Stops scanning your hard drive)
-*
+# Ignore build artifacts and dependencies
+node_modules/
+.expo/
+dist/
+web-build/
 
-# 2. ALLOWLIST (Only include these project files)
+# Ignore secrets
+.env
+.env*.local
+!.env.example
 
-!/assets/
-!/src/
-!app.json
-!eas.json
-!package.json
-!package-lock.json
-!babel.config.js
-!tsconfig.json
-!metro.config.js
-!.easignore
-!.gitignore
-!eslint.config.js
-!expo-env.d.ts
+# Ignore native folders (managed workflow)
+/android
+/ios
+
+# Ignore git
+.git
+
+# Ignore editor/OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Ignore logs
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
