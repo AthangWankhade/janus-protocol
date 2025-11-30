@@ -1,6 +1,6 @@
 module github.com/AthangWankhade/sync-relay
 
-go 1.21
+go 1.24.0
 
 require (
 	github.com/gin-gonic/gin v1.11.0
