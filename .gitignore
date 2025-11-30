@@ -1,0 +1,51 @@
+# General
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+
+# Environment Variables (Sensitive!)
+.env
+.env.local
+.env.*.local
+
+# Python (ai-processor)
+ai-processor/venv/
+ai-processor/__pycache__/
+ai-processor/*.pyc
+ai-processor/.pytest_cache/
+
+# Node/Expo (mobile-client)
+mobile-client/node_modules/
+mobile-client/.expo/
+mobile-client/dist/
+mobile-client/web-build/
+mobile-client/*.jks
+mobile-client/*.keystore
+mobile-client/android/
+mobile-client/ios/
+!mobile-client/android/build.gradle
+!mobile-client/android/settings.gradle
+!mobile-client/android/app/build.gradle
+!mobile-client/ios/Podfile
+
+# Note: We usually ignore android/ios folders in Expo unless we have custom native code.
+# Since we are using 'npx expo prebuild', it's often better to ignore them and let prebuild generate them.
+# However, if you have modified them manually, you might want to keep them.
+# Given the user asked to exclude dependencies, I'll assume standard Expo managed workflow behavior where these are generated.
+# But wait, the user modified app.json and ran prebuild.
+# Let's stick to standard Expo ignore patterns which usually IGNORE android/ios if they are generated.
+# But if the user ejected or is using CNG (Continuous Native Generation), they are ignored.
+# I will add them to ignore for now as 'npx expo prebuild --clean' implies they are ephemeral.
+
+# Go (sync-relay)
+sync-relay/bin/
+sync-relay/dist/
+sync-relay/main
+sync-relay/*.exe
+
+# Database (Local)
+*.sqlite
+*.db
+*.db-journal

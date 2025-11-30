@@ -1,0 +1,52 @@
+
+> mobile-client@1.0.0 lint
+> expo lint
+
+
+E:\janus-protocol\mobile-client\src\app\(decoy)\index.tsx
+   88:14  warning  'e' is defined but never used  @typescript-eslint/no-unused-vars
+  151:14  warning  'e' is defined but never used  @typescript-eslint/no-unused-vars
+
+E:\janus-protocol\mobile-client\src\app\(decoy)\quiz.tsx
+  49:16  warning  'e' is defined but never used                                                                              @typescript-eslint/no-unused-vars
+  54:6   warning  React Hook useEffect has a missing dependency: 'router'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+E:\janus-protocol\mobile-client\src\app\(vault)\dashboard.tsx
+   79:6   warning  React Hook useEffect has a missing dependency: 'messages'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  110:9   warning  'isVaultUnlocked' is assigned a value but never used                                                         @typescript-eslint/no-unused-vars
+  111:9   warning  'isInteractionActive' is assigned a value but never used                                                     @typescript-eslint/no-unused-vars
+  359:14  warning  'e' is defined but never used                                                                                @typescript-eslint/no-unused-vars
+  506:9   warning  'renderPatternMenu' is assigned a value but never used                                                       @typescript-eslint/no-unused-vars
+
+E:\janus-protocol\mobile-client\src\app\(vault)\lock-screen.tsx
+  25:6  warning  React Hook useEffect has a missing dependency: 'checkBiometrics'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  57:6  warning  React Hook useEffect has a missing dependency: 'handleSuccess'. Either include it or remove the dependency array    react-hooks/exhaustive-deps
+
+E:\janus-protocol\mobile-client\src\app\_layout.tsx
+  57:6  warning  React Hook useEffect has missing dependencies: 'lockVault' and 'router'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+
+E:\janus-protocol\mobile-client\src\features\decoy\components\parallax-scroll-view.tsx
+  11:32  error  Unable to resolve path to module '@/hooks/use-color-scheme'  import/no-unresolved
+  12:31  error  Unable to resolve path to module '@/hooks/use-theme-color'   import/no-unresolved
+
+E:\janus-protocol\mobile-client\src\features\decoy\components\themed-text.tsx
+  3:31  error  Unable to resolve path to module '@/hooks/use-theme-color'  import/no-unresolved
+
+E:\janus-protocol\mobile-client\src\features\decoy\components\themed-view.tsx
+  3:31  error  Unable to resolve path to module '@/hooks/use-theme-color'  import/no-unresolved
+
+E:\janus-protocol\mobile-client\src\features\decoy\components\ui\collapsible.tsx
+  8:32  error  Unable to resolve path to module '@/hooks/use-color-scheme'  import/no-unresolved
+
+E:\janus-protocol\mobile-client\src\features\decoy\hooks\use-theme-color.ts
+  7:32  error  Unable to resolve path to module '@/hooks/use-color-scheme'  import/no-unresolved
+
+E:\janus-protocol\mobile-client\src\services\crypto\encryption.ts
+  7:7  warning  'TAG_LENGTH' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+E:\janus-protocol\mobile-client\src\services\noteService.ts
+  108:15  warning  'playAudio' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  247:16  warning  'e' is defined but never used                   @typescript-eslint/no-unused-vars
+
+✖ 21 problems (6 errors, 15 warnings)
+
