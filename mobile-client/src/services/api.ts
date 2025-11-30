@@ -1,6 +1,6 @@
 // REPLACE THIS WITH YOUR COMPUTER'S LOCAL IP ADDRESS
 // For USB Debugging with `adb reverse`, use "http://localhost:8000"
-const API_URL = "http://192.168.1.3:8000";
+const API_URL = "https://janus-ai-production.up.railway.app";
 
 export const ApiService = {
   async checkHealth() {

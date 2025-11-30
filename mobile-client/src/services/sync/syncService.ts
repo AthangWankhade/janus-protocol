@@ -1,7 +1,7 @@
 // import { NoteService } from "../noteService"; // Removed to break cycle
 
 // CHANGE THIS IP to your computer's local IP
-const WS_URL = "ws://192.168.1.3:8080/ws";
+const WS_URL = "wss://sync-relay-production.up.railway.app/ws";
 
 class SyncService {
   private ws: WebSocket | null = null;
