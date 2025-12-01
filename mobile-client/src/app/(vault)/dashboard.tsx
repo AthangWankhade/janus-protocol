@@ -5,7 +5,9 @@ import {
   FileText,
   Image as ImageIcon,
   Lock,
+  Maximize2,
   Mic,
+  Minimize2,
   Palette,
   Paperclip,
   Pause,
@@ -16,6 +18,7 @@ import {
   Search,
   StopCircle,
   Trash2,
+  Video as VideoIcon,
   X,
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -36,16 +39,19 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Circle } from "react-native-svg"; // <--- Add SVG Imports
 
 // FIX: Use legacy API to get access to 'getContentUriAsync' as per Expo SDK 52+ requirements
 import PatternBackground from "@/components/PatternBackground"; // <--- NEW
 import { deriveKey } from "@/services/crypto/encryption";
 import { NoteService } from "@/services/noteService";
+import { SaveQueueService } from "@/services/saveQueueService"; // <--- NEW
 import { StorageService } from "@/services/storageService"; // <--- Added import
 import { syncService } from "@/services/sync/syncService";
 import { useAppStore } from "@/store/useAppStore";
+import Slider from "@react-native-community/slider";
 import { Buffer } from "buffer";
-import { Audio } from "expo-av";
+import { Audio, ResizeMode, Video } from "expo-av";
 import * as DocumentPicker from "expo-document-picker";
 // @ts-ignore
 import { getContentUriAsync } from "expo-file-system/legacy";
@@ -111,7 +117,236 @@ const FunnyLoader = ({ visible }: { visible: boolean }) => {
   );
 };
 
-export default function VaultDashboard() {
+const formatTime = (millis: number) => {
+  const minutes = Math.floor(millis / 60000);
+  const seconds = ((millis % 60000) / 1000).toFixed(0);
+  return `${minutes}:${Number(seconds) < 10 ? "0" : ""}${seconds}`;
+};
+
+const VideoPlayer = ({
+  uri,
+  onClose,
+  onNext,
+  onPrev,
+  hasNext,
+  hasPrev,
+  isEncrypted, // <--- New Prop
+  onDecrypt, // <--- New Prop
+}: {
+  uri: string;
+  onClose: () => void;
+  onNext: () => void;
+  onPrev: () => void;
+  hasNext: boolean;
+  hasPrev: boolean;
+  isEncrypted?: boolean;
+  onDecrypt?: (setProgress: (p: number) => void) => Promise<void>; // <--- Update Type
+}) => {
+  const videoRef = useRef<Video>(null);
+  const [status, setStatus] = useState<any>({});
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false); // <--- Fullscreen State
+  const [isDecrypting, setIsDecrypting] = useState(false);
+  const [progress, setProgress] = useState(0); // <--- Progress State
+
+  // Auto-play after decryption
+  useEffect(() => {
+    if (!isDecrypting && !isEncrypted && videoRef.current) {
+      // Small delay to ensure ref is ready and component mounted
+      setTimeout(() => {
+        videoRef.current?.playAsync();
+      }, 500);
+    }
+  }, [isDecrypting, isEncrypted]);
+
+  // Handle Play Press
+  const handlePlayPress = async () => {
+    if (isEncrypted && onDecrypt) {
+      setIsDecrypting(true);
+      setProgress(0);
+      // Pass setProgress to onDecrypt
+      await onDecrypt(setProgress);
+      setIsDecrypting(false);
+    } else {
+      if (status.isPlaying) {
+        videoRef.current?.pauseAsync();
+      } else {
+        videoRef.current?.playAsync();
+      }
+    }
+  };
+
+  const PlayerContent = (
+    <View
+      style={{
+        width: "100%",
+        height: isFullscreen ? "100%" : 250,
+        backgroundColor: "#000",
+        justifyContent: "center",
+      }}
+    >
+      {isDecrypting ? (
+        <View style={{ alignItems: "center", gap: 10 }}>
+          {/* Circular Progress */}
+          <Svg height="50" width="50" viewBox="0 0 100 100">
+            <Circle
+              cx="50"
+              cy="50"
+              r="45"
+              stroke="#374151"
+              strokeWidth="10"
+              fill="none"
+            />
+            <Circle
+              cx="50"
+              cy="50"
+              r="45"
+              stroke="#10B981"
+              strokeWidth="10"
+              fill="none"
+              strokeDasharray={`${2 * Math.PI * 45}`}
+              strokeDashoffset={`${2 * Math.PI * 45 * (1 - progress)}`}
+              strokeLinecap="round"
+              rotation="-90"
+              origin="50, 50"
+            />
+          </Svg>
+          <Text style={{ color: "#FFF", fontSize: 12 }}>
+            Decrypting... {Math.round(progress * 100)}%
+          </Text>
+        </View>
+      ) : (
+        <Video
+          ref={videoRef}
+          style={{ width: "100%", height: "100%" }}
+          source={{ uri: isEncrypted ? "" : uri }} // Pass empty string if encrypted to avoid type error
+          useNativeControls={false}
+          resizeMode={ResizeMode.CONTAIN}
+          isLooping={false}
+          shouldPlay={false} // <--- FIX: Never auto-play on mount. Only play via ref.
+          onPlaybackStatusUpdate={(s) => {
+            setStatus(s);
+            if (s.isLoaded) {
+              setPosition(s.positionMillis);
+              setDuration(s.durationMillis || 0);
+            }
+          }}
+        />
+      )}
+
+      {/* Controls Overlay */}
+      {!isDecrypting && (
+        <View
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            padding: 10,
+            backgroundColor: "rgba(0,0,0,0.6)",
+          }}
+        >
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity onPress={onPrev} disabled={!hasPrev}>
+                <Play
+                  size={20}
+                  color={hasPrev ? "#FFF" : "#4B5563"}
+                  style={{ transform: [{ rotate: "180deg" }] }}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={handlePlayPress}>
+                {status.isPlaying ? (
+                  <Pause color="#FFF" size={24} />
+                ) : (
+                  <Play color="#FFF" size={24} />
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={onNext} disabled={!hasNext}>
+                <Play size={20} color={hasNext ? "#FFF" : "#4B5563"} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ color: "#FFF", fontSize: 12 }}>
+              {formatTime(position)} / {formatTime(duration)}
+            </Text>
+
+            <TouchableOpacity onPress={() => setIsFullscreen(!isFullscreen)}>
+              {isFullscreen ? (
+                <Minimize2 color="#FFF" size={20} />
+              ) : (
+                <Maximize2 color="#FFF" size={20} />
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <Slider
+            style={{ width: "100%", height: 40 }}
+            minimumValue={0}
+            maximumValue={duration}
+            value={position}
+            minimumTrackTintColor="#10B981"
+            maximumTrackTintColor="#4B5563"
+            thumbTintColor="#10B981"
+            onSlidingComplete={(val) => videoRef.current?.setPositionAsync(val)}
+          />
+        </View>
+      )}
+
+      {/* Close Button (Only in Fullscreen) */}
+      {isFullscreen && (
+        <TouchableOpacity
+          style={{ position: "absolute", top: 40, right: 20, padding: 10 }}
+          onPress={() => setIsFullscreen(false)}
+        >
+          <X color="#FFF" size={30} />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  if (isFullscreen) {
+    return (
+      <Modal
+        visible={true}
+        animationType="fade"
+        onRequestClose={() => setIsFullscreen(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: "#000" }}>
+          {PlayerContent}
+        </View>
+      </Modal>
+    );
+  }
+
+  return (
+    <View
+      style={{
+        marginBottom: 20,
+        backgroundColor: "#000",
+        borderRadius: 12,
+        overflow: "hidden",
+        height: 250,
+      }}
+    >
+      {PlayerContent}
+    </View>
+  );
+};
+
+// Session Cache for Decrypted Videos
+const decryptedCache: Record<string, string> = {};
+
+export default function Dashboard() {
   const router = useRouter();
   const lockVault = useAppStore((state) => state.lockVault);
   // const isVaultUnlocked = useAppStore((state) => state.isVaultUnlocked); // Unused
@@ -130,6 +365,7 @@ export default function VaultDashboard() {
   const [masterKey, setMasterKey] = useState<Buffer | null>(null);
   const [isNoteModalVisible, setNoteModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false); // <--- New saving state
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState("");
@@ -141,7 +377,15 @@ export default function VaultDashboard() {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [currentNoteTitle, setCurrentNoteTitle] = useState("");
   const [content, setContent] = useState("");
-  const [selectedImages, setSelectedImages] = useState<string[]>([]); // Changed to array
+  const [selectedImages, setSelectedImages] = useState<
+    (string | { originalUri: string; isEncrypted: boolean })[]
+  >([]); // <--- Updated image array type
+  const [selectedVideos, setSelectedVideos] = useState<
+    (string | { originalUri: string; isEncrypted: boolean })[]
+  >([]); // <--- New video array
+  const [initialVideoUris, setInitialVideoUris] = useState<
+    (string | { originalUri: string; isEncrypted: boolean })[]
+  >([]); // Track existing videos
   const [selectedDocs, setSelectedDocs] = useState<any[]>([]); // Changed to array
 
   // Audio State
@@ -151,7 +395,48 @@ export default function VaultDashboard() {
   const [sound, setSound] = useState<Audio.Sound | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playingUri, setPlayingUri] = useState<string | null>(null); // Track which one is playing
+  const [playingVideoUri, setPlayingVideoUri] = useState<string | null>(null); // Track playing video
   const recordingAnim = useRef(new Animated.Value(1)).current;
+  const [recordingDuration, setRecordingDuration] = useState(0); // Added for recording duration
+
+  // Auto-Decrypt Images
+  useEffect(() => {
+    if (!masterKey) return;
+
+    selectedImages.forEach(async (img, index) => {
+      if (typeof img === "object" && img.isEncrypted) {
+        // Check Cache
+        if (decryptedCache[img.originalUri]) {
+          const cachedPath = decryptedCache[img.originalUri];
+          setSelectedImages((prev) => {
+            const newArr = [...prev];
+            newArr[index] = cachedPath;
+            return newArr;
+          });
+          return;
+        }
+
+        // Decrypt
+        try {
+          const decryptedPath = await StorageService.loadEncryptedFile(
+            img.originalUri,
+            masterKey,
+            false // Not video, so no special extension needed usually, but let's see
+          );
+          if (decryptedPath) {
+            decryptedCache[img.originalUri] = decryptedPath;
+            setSelectedImages((prev) => {
+              const newArr = [...prev];
+              newArr[index] = decryptedPath;
+              return newArr;
+            });
+          }
+        } catch (e) {
+          console.log("Failed to auto-decrypt image", e);
+        }
+      }
+    });
+  }, [selectedImages, masterKey]);
 
   useEffect(() => {
     const PROTOTYPE_SALT = "a1b2c3d4e5f67890a1b2c3d4e5f67890";
@@ -278,6 +563,12 @@ export default function VaultDashboard() {
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
       setRecording(recording);
+      setRecordingDuration(0); // Reset duration
+      recording.setOnRecordingStatusUpdate((status) => {
+        if (status.isRecording) {
+          setRecordingDuration(status.durationMillis || 0);
+        }
+      });
       setInteractionActive(false);
     } catch (err) {
       setInteractionActive(false);
@@ -292,6 +583,7 @@ export default function VaultDashboard() {
     if (uri) {
       setRecordedAudioUris((prev) => [...prev, uri]);
     }
+    setRecordingDuration(0); // Reset duration after stopping
   }
   async function playSound(uri: string) {
     // If clicking the same item that is playing
@@ -373,6 +665,24 @@ export default function VaultDashboard() {
       Alert.alert("Error", "Could not pick file");
     }
   };
+  const pickVideo = async () => {
+    setInteractionActive(true);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      allowsEditing: false,
+      quality: 1,
+      allowsMultipleSelection: true,
+    });
+
+    setTimeout(() => setInteractionActive(false), 2000);
+
+    if (!result.canceled) {
+      const newUris = result.assets.map((a) => a.uri);
+      setSelectedVideos((prev) => [...prev, ...newUris]);
+    }
+  };
 
   // UPDATED: Robust File Opening with Legacy API
   const openDocument = async (doc: any) => {
@@ -428,6 +738,8 @@ export default function VaultDashboard() {
     setCurrentNoteTitle("");
     setContent("");
     setSelectedImages([]); // Reset array
+    setSelectedVideos([]); // Reset array
+    setInitialVideoUris([]); // Reset array
     setRecordedAudioUris([]); // Reset array
     setInitialAudioUris([]); // Reset array
     setSelectedDocs([]); // Reset array
@@ -440,11 +752,20 @@ export default function VaultDashboard() {
     setContent(note.content);
 
     // Initial state from list (contains thumbnail + placeholders)
-    setSelectedImages(note.images || []);
+    // Ensure we handle legacy string arrays correctly
+    const initialImages = (note.images || []).map((img: any) => {
+      if (typeof img === "string") return img;
+      return img;
+    });
+    setSelectedImages(initialImages);
+
     // Load existing audio attachments (if any) or legacy audio
     const existingAudios = note.audio ? note.audio.map((a: any) => a) : [];
     setRecordedAudioUris(existingAudios);
     setInitialAudioUris(existingAudios); // Track initial state
+
+    setSelectedVideos(note.videos || []);
+    setInitialVideoUris(note.videos || []);
 
     setSelectedDocs(note.documents || []);
 
@@ -457,6 +778,10 @@ export default function VaultDashboard() {
         if (details.images && details.images.length > 0) {
           setSelectedImages(details.images);
         }
+        if (details.videos && details.videos.length > 0) {
+          setSelectedVideos(details.videos);
+          setInitialVideoUris(details.videos);
+        }
       } catch (e) {
         console.log("Failed to load note details", e);
       }
@@ -465,32 +790,77 @@ export default function VaultDashboard() {
 
   const handleSave = async () => {
     if (!masterKey || !currentNoteTitle.trim()) return;
-    if (editingNoteId) {
-      // Filter out existing audios to avoid duplication
-      const newAudioUris = recordedAudioUris.filter(
-        (uri) => !initialAudioUris.includes(uri)
-      );
 
-      await NoteService.updateNote(
-        editingNoteId,
-        currentNoteTitle,
-        content,
-        masterKey,
-        undefined, // imageUri (not handled yet)
-        newAudioUris // Pass only NEW audios
-      );
-    } else {
-      await NoteService.createNote(
-        currentNoteTitle,
-        content,
-        masterKey,
-        selectedImages, // Pass array
-        recordedAudioUris, // Pass array
-        selectedDocs // Pass array
-      );
+    // UI Feedback immediately
+    setIsSaving(true);
+
+    try {
+      if (editingNoteId) {
+        // Filter out existing audios to avoid duplication
+        const newAudioUris = recordedAudioUris.filter(
+          (uri) => !initialAudioUris.includes(uri)
+        );
+        const newVideoUris = selectedVideos.filter(
+          (uri) => !initialVideoUris.includes(uri)
+        );
+
+        // Queue Update
+        await SaveQueueService.addToQueue(
+          "UPDATE",
+          {
+            title: currentNoteTitle,
+            content: content,
+            imageUri: undefined, // Not handling image updates in this flow yet
+            newAudioUris: newAudioUris,
+            newVideoUris: newVideoUris,
+          },
+          masterKey,
+          editingNoteId
+        );
+      } else {
+        // Queue Create
+        await SaveQueueService.addToQueue(
+          "CREATE",
+          {
+            title: currentNoteTitle,
+            content: content,
+            // Map back to strings if possible, or keep objects?
+            // The service expects strings for new images usually, but here we might have existing ones.
+            // For CREATE, we usually only have new images (strings) from picker.
+            // But if we are editing and treating it as create (unlikely), we need to be careful.
+            // Actually, selectedImages contains what we want to save.
+            // If it's an object {originalUri, isEncrypted}, it means it's already saved/encrypted.
+            // We should probably filter those out or handle them?
+            // For now, let's just pass it. NoteService.createNote might need adjustment if it expects strings.
+            // Wait, NoteService.createNote expects `imageUris: string[]`.
+            // We should only pass NEW images (strings) to createNote?
+            // Or NoteService should handle mixed types?
+            // Let's map to strings for now, assuming objects are already handled or ignored?
+            // Actually, for CREATE, everything in selectedImages should be a new URI (string) from picker.
+            // Unless we are cloning?
+            // Let's cast to any to silence TS for now, but we should verify logic.
+            imageUris: selectedImages.map((i) =>
+              typeof i === "string" ? i : i.originalUri
+            ),
+            audioUris: recordedAudioUris,
+            videoUris: selectedVideos,
+            docFiles: selectedDocs,
+          },
+          masterKey
+        );
+      }
+
+      Alert.alert("Saved", "Note is saving in the background...");
+      setNoteModalVisible(false);
+      // We don't await refreshNotes here, the queue will handle it eventually
+      // But we can trigger a refresh to see if anything finished fast
+      setTimeout(() => refreshNotes(masterKey), 1000);
+    } catch (e) {
+      Alert.alert("Error", "Failed to queue note");
+      console.error(e);
+    } finally {
+      setIsSaving(false);
     }
-    setNoteModalVisible(false);
-    refreshNotes(masterKey);
   };
 
   const closeNoteModal = () => {
@@ -531,7 +901,25 @@ export default function VaultDashboard() {
             style={[styles.menuContainer, { top: insets.top + 60, right: 20 }]}
           >
             <Text style={styles.menuTitle}>Choose Theme 🎨</Text>
-            {["none", "teddy", "heart", "bow"].map((p) => (
+            {[
+              "none",
+              "teddy",
+              "heart",
+              "bow",
+              "flower",
+              "cloud",
+              "star",
+              "strawberry",
+              "catpaw",
+              "bunny",
+              "frog",
+              "lemon",
+              "cherry",
+              "mushroom",
+              "butterfly",
+              "sparkle",
+              "confidence",
+            ].map((p) => (
               <TouchableOpacity
                 key={p}
                 style={[
@@ -811,11 +1199,20 @@ export default function VaultDashboard() {
             ]}
           >
             <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={closeNoteModal}>
+              <TouchableOpacity
+                onPress={() => {
+                  setPlayingVideoUri(null); // <--- Stop video
+                  closeNoteModal();
+                }}
+              >
                 <X size={24} color="#333" />
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleSave}>
-                <Text style={styles.saveButton}>Save</Text>
+              <TouchableOpacity onPress={handleSave} disabled={isSaving}>
+                {isSaving ? (
+                  <ActivityIndicator size="small" color="#10B981" />
+                ) : (
+                  <Text style={styles.saveButton}>Save</Text>
+                )}
               </TouchableOpacity>
             </View>
 
@@ -879,6 +1276,7 @@ export default function VaultDashboard() {
                 <View
                   style={{
                     flexDirection: "row",
+                    flexWrap: "wrap", // <--- Wrap buttons
                     gap: 10,
                     marginBottom: 20,
                     marginTop: 20,
@@ -906,15 +1304,19 @@ export default function VaultDashboard() {
                     <Text
                       style={[styles.mediaText, recording && { color: "#FFF" }]}
                     >
-                      {recording ? "Recording..." : "Voice"}
+                      {recording ? formatTime(recordingDuration) : "Voice"}
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.mediaBtn}
                     onPress={pickDocument}
                   >
-                    <Paperclip size={20} color="#666" />
+                    <FileText size={20} color="#666" />
                     <Text style={styles.mediaText}>File</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.mediaBtn} onPress={pickVideo}>
+                    <VideoIcon size={20} color="#666" />
+                    <Text style={styles.mediaText}>Video</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -970,6 +1372,201 @@ export default function VaultDashboard() {
                   </View>
                 ))}
 
+                {/* Video List */}
+                {selectedVideos.length > 0 && (
+                  <View style={{ marginBottom: 20 }}>
+                    <Text style={styles.label}>Videos</Text>
+
+                    {/* Active Player */}
+                    {playingVideoUri && (
+                      <VideoPlayer
+                        uri={playingVideoUri}
+                        isEncrypted={(() => {
+                          const vid = selectedVideos.find(
+                            (v) =>
+                              (typeof v === "string" ? v : v.originalUri) ===
+                              playingVideoUri
+                          );
+                          if (
+                            vid &&
+                            typeof vid === "object" &&
+                            vid.isEncrypted
+                          ) {
+                            // Check Cache
+                            if (decryptedCache[vid.originalUri]) return false; // Already decrypted
+                            return true;
+                          }
+                          return false;
+                        })()}
+                        onDecrypt={async (setProgress) => {
+                          // Find the video object
+                          const vidIndex = selectedVideos.findIndex(
+                            (v) =>
+                              (typeof v === "string" ? v : v.originalUri) ===
+                              playingVideoUri
+                          );
+                          if (vidIndex === -1) return;
+
+                          const vidObj = selectedVideos[vidIndex];
+                          if (
+                            !vidObj ||
+                            typeof vidObj === "string" ||
+                            !vidObj.isEncrypted
+                          )
+                            return;
+
+                          // Check Cache First
+                          if (decryptedCache[vidObj.originalUri]) {
+                            const cachedPath =
+                              decryptedCache[vidObj.originalUri];
+                            const newVideos = [...selectedVideos];
+                            newVideos[vidIndex] = cachedPath;
+                            setSelectedVideos(newVideos);
+                            setPlayingVideoUri(cachedPath);
+                            return;
+                          }
+
+                          // Decrypt with Progress
+                          const decryptedPath =
+                            await StorageService.loadEncryptedFile(
+                              vidObj.originalUri,
+                              masterKey!,
+                              true,
+                              "mp4",
+                              setProgress
+                            );
+
+                          // Update State & Cache
+                          if (decryptedPath) {
+                            decryptedCache[vidObj.originalUri] = decryptedPath; // <--- Cache it
+                            const newVideos = [...selectedVideos];
+                            newVideos[vidIndex] = decryptedPath;
+                            setSelectedVideos(newVideos);
+                            setPlayingVideoUri(decryptedPath);
+                          }
+                        }}
+                        onClose={() => setPlayingVideoUri(null)}
+                        onNext={() => {
+                          const currentIndex = selectedVideos.findIndex(
+                            (v) =>
+                              (typeof v === "string" ? v : v.originalUri) ===
+                              playingVideoUri
+                          );
+                          if (currentIndex < selectedVideos.length - 1) {
+                            const nextVid = selectedVideos[currentIndex + 1];
+                            setPlayingVideoUri(
+                              typeof nextVid === "string"
+                                ? nextVid
+                                : nextVid.originalUri
+                            );
+                          }
+                        }}
+                        onPrev={() => {
+                          const currentIndex = selectedVideos.findIndex(
+                            (v) =>
+                              (typeof v === "string" ? v : v.originalUri) ===
+                              playingVideoUri
+                          );
+                          if (currentIndex > 0) {
+                            const prevVid = selectedVideos[currentIndex - 1];
+                            setPlayingVideoUri(
+                              typeof prevVid === "string"
+                                ? prevVid
+                                : prevVid.originalUri
+                            );
+                          }
+                        }}
+                        hasNext={
+                          selectedVideos.findIndex(
+                            (v) =>
+                              (typeof v === "string" ? v : v.originalUri) ===
+                              playingVideoUri
+                          ) <
+                          selectedVideos.length - 1
+                        }
+                        hasPrev={
+                          selectedVideos.findIndex(
+                            (v) =>
+                              (typeof v === "string" ? v : v.originalUri) ===
+                              playingVideoUri
+                          ) > 0
+                        }
+                      />
+                    )}
+
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                    >
+                      {selectedVideos.map((vid, index) => {
+                        const uri =
+                          typeof vid === "string" ? vid : vid.originalUri;
+                        const isEncrypted =
+                          typeof vid === "object" && vid.isEncrypted;
+
+                        return (
+                          <View
+                            key={index}
+                            style={{ marginRight: 10, position: "relative" }}
+                          >
+                            <TouchableOpacity
+                              onPress={() => setPlayingVideoUri(uri)}
+                              style={{
+                                width: 100,
+                                height: 100,
+                                borderRadius: 8,
+                                backgroundColor: "#000",
+                                justifyContent: "center",
+                                alignItems: "center",
+                                borderWidth: playingVideoUri === uri ? 2 : 0,
+                                borderColor: "#10B981",
+                              }}
+                            >
+                              <VideoIcon size={30} color="#FFF" />
+                              {isEncrypted && (
+                                <Lock
+                                  size={16}
+                                  color="#F59E0B"
+                                  style={{
+                                    position: "absolute",
+                                    top: 5,
+                                    right: 5,
+                                  }}
+                                />
+                              )}
+                              {isEncrypted && (
+                                <Lock
+                                  size={16}
+                                  color="#F59E0B"
+                                  style={{
+                                    position: "absolute",
+                                    top: 5,
+                                    right: 5,
+                                  }}
+                                />
+                              )}
+                            </TouchableOpacity>
+                            {!editingNoteId && (
+                              <TouchableOpacity
+                                style={styles.deleteMediaBtn}
+                                onPress={() => {
+                                  const newVideos = [...selectedVideos];
+                                  newVideos.splice(index, 1);
+                                  setSelectedVideos(newVideos);
+                                  if (playingVideoUri === uri)
+                                    setPlayingVideoUri(null);
+                                }}
+                              >
+                                <X size={12} color="#FFF" />
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
+                )}
+
                 {/* DOCUMENTS LIST */}
                 {selectedDocs.map((doc, index) => (
                   <View key={index} style={styles.audioPreview}>
@@ -1019,41 +1616,67 @@ export default function VaultDashboard() {
                 ))}
 
                 {/* IMAGES LIST */}
-                {selectedImages.map((uri, index) => (
-                  <View key={index} style={{ marginBottom: 12 }}>
-                    <TouchableOpacity onPress={() => openImageViewer(index)}>
-                      <Image
-                        source={{ uri: uri }}
-                        style={{
-                          width: "100%",
-                          height: 250, // Fixed height
-                          borderRadius: 12,
-                          backgroundColor: "#f0f0f0",
-                        }}
-                        resizeMode="contain" // Preserve aspect ratio
-                      />
-                    </TouchableOpacity>
-                    {!editingNoteId && (
+                {selectedImages.map((img, index) => {
+                  const uri = typeof img === "string" ? img : img.originalUri;
+                  const isEncrypted =
+                    typeof img === "object" && img.isEncrypted;
+
+                  return (
+                    <View key={index} style={{ marginBottom: 12 }}>
                       <TouchableOpacity
-                        style={{
-                          position: "absolute",
-                          top: 10,
-                          right: 10,
-                          backgroundColor: "rgba(0,0,0,0.5)",
-                          borderRadius: 20,
-                          padding: 4,
-                        }}
-                        onPress={() => {
-                          setSelectedImages((prev) =>
-                            prev.filter((_, i) => i !== index)
-                          );
-                        }}
+                        onPress={() => !isEncrypted && openImageViewer(index)}
                       >
-                        <X size={16} color="#FFF" />
+                        {isEncrypted ? (
+                          <View
+                            style={{
+                              width: "100%",
+                              height: 250,
+                              borderRadius: 12,
+                              backgroundColor: "#E5E7EB",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <ActivityIndicator size="large" color="#10B981" />
+                            <Text style={{ marginTop: 10, color: "#6B7280" }}>
+                              Decrypting...
+                            </Text>
+                          </View>
+                        ) : (
+                          <Image
+                            source={{ uri: uri }}
+                            style={{
+                              width: "100%",
+                              height: 250, // Fixed height
+                              borderRadius: 12,
+                              backgroundColor: "#f0f0f0",
+                            }}
+                            resizeMode="contain" // Preserve aspect ratio
+                          />
+                        )}
                       </TouchableOpacity>
-                    )}
-                  </View>
-                ))}
+                      {!editingNoteId && (
+                        <TouchableOpacity
+                          style={{
+                            position: "absolute",
+                            top: 10,
+                            right: 10,
+                            backgroundColor: "rgba(0,0,0,0.5)",
+                            borderRadius: 20,
+                            padding: 4,
+                          }}
+                          onPress={() => {
+                            setSelectedImages((prev) =>
+                              prev.filter((_, i) => i !== index)
+                            );
+                          }}
+                        >
+                          <X size={16} color="#FFF" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  );
+                })}
               </View>
             </ScrollView>
           </View>
@@ -1100,11 +1723,15 @@ export default function VaultDashboard() {
                   alignItems: "center",
                 }}
               >
-                <Image
-                  source={{ uri: item }}
-                  style={{ width: "100%", height: "100%" }}
-                  resizeMode="contain"
-                />
+                {typeof item === "string" ? (
+                  <Image
+                    source={{ uri: item }}
+                    style={{ width: "100%", height: "100%" }}
+                    resizeMode="contain"
+                  />
+                ) : (
+                  <ActivityIndicator size="large" color="#FFF" />
+                )}
               </View>
             )}
             style={{ flex: 1 }}
@@ -1268,7 +1895,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   mediaBtn: {
-    flex: 1,
+    width: "47%", // <--- 2 per row with gap
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -1289,7 +1916,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#BFDBFE",
   },
-
+  deleteMediaBtn: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    borderRadius: 12,
+    padding: 4,
+  },
   label: {
     fontSize: 14,
     fontWeight: "bold",

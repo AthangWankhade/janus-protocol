@@ -1,3 +1,4 @@
+import { SaveQueueService } from "@/services/saveQueueService"; // <--- NEW
 import { useAppStore } from "@/store/useAppStore";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { usePreventScreenCapture } from "expo-screen-capture"; // <--- Import
@@ -13,6 +14,15 @@ export default function RootLayout() {
   const lockVault = useAppStore((state) => state.lockVault);
 
   const [isPrivacyMode, setIsPrivacyMode] = React.useState(false);
+
+  useEffect(() => {
+    // Resume any pending saves from previous session (Delayed to prevent hang)
+    // Runs ONLY ONCE on mount
+    const timer = setTimeout(() => {
+      SaveQueueService.resumeQueue();
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     // Listen for app state changes (Active -> Background -> Active)

@@ -45,7 +45,38 @@ export const encryptData = (text: string, masterKey: Buffer) => {
   const authTag = cipher.getAuthTag();
 
   // Return format: IV:AuthTag:EncryptedContent
+  // Return format: IV:AuthTag:EncryptedContent
   return `${iv.toString("hex")}:${authTag.toString("hex")}:${encrypted}`;
+};
+
+/**
+ * Create an encryption session for chunked processing
+ */
+export const createEncryptionSession = (masterKey: Buffer) => {
+  const iv = QuickCrypto.randomBytes(IV_LENGTH);
+  const cipher = QuickCrypto.createCipheriv(ALGORITHM, masterKey, iv);
+  return {
+    cipher,
+    iv,
+    getAuthTag: () => cipher.getAuthTag(),
+  };
+};
+
+/**
+ * Create a decryption session for chunked processing
+ */
+export const createDecryptionSession = (
+  masterKey: Buffer,
+  ivHex: string,
+  authTagHex: string
+) => {
+  const decipher = QuickCrypto.createDecipheriv(
+    ALGORITHM,
+    masterKey,
+    Buffer.from(ivHex, "hex")
+  );
+  decipher.setAuthTag(Buffer.from(authTagHex, "hex"));
+  return { decipher };
 };
 
 /**

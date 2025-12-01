@@ -21,11 +21,37 @@ export const NoteService = {
     content: string,
     masterKey: Buffer,
     imageUris: string[] = [],
-    audioUris: string[] = [], // Changed to array
-    docFiles: NoteFile[] = []
+    audioUris: string[] = [],
+    videoUris: string[] = [], // New video array
+    docFiles: any[] = [],
+    id?: string // <--- NEW: Optional ID for idempotency
   ) {
-    await database.write(async () => {
+    return await database.write(async () => {
+      // If ID provided, check if exists (Idempotency check)
+      if (id) {
+        try {
+          const existing = await notesCollection.find(id);
+          if (existing) {
+            console.log("Note already exists (idempotency), updating instead.");
+            // If it exists, we should probably update it or just return it?
+            // For now, let's just return it to avoid duplicate errors,
+            // assuming the previous attempt succeeded in creation but failed elsewhere.
+            // OR we could call updateNote here?
+            // Let's assume if it exists, we treat it as "done" for creation purposes
+            // and maybe the queue should have been an UPDATE if it was already created.
+            // But since we are in "CREATE" mode, let's just update the content to be sure.
+            return await existing.update((note: any) => {
+              note.title = encryptData(title, masterKey);
+              note.content = encryptData(content, masterKey);
+            });
+          }
+        } catch (e) {
+          // Not found, proceed to create
+        }
+      }
+
       const newNote = await notesCollection.create((note: any) => {
+        if (id) note._raw.id = id; // Set explicit ID
         note.title = encryptData(title, masterKey);
         note.content = encryptData(content, masterKey);
         note.audioUri = null; // Legacy field unused
@@ -64,6 +90,21 @@ export const NoteService = {
         await database.get("attachments").create((att: any) => {
           att.note.set(newNote);
           att.type = "audio";
+          att.uri = encryptedPath;
+          att.createdAt = new Date();
+        });
+      }
+
+      // Create Attachment records for Videos
+      for (const uri of videoUris) {
+        const encryptedPath = await StorageService.saveEncryptedFile(
+          uri,
+          masterKey,
+          "video_enc"
+        );
+        await database.get("attachments").create((att: any) => {
+          att.note.set(newNote);
+          att.type = "video";
           att.uri = encryptedPath;
           att.createdAt = new Date();
         });
@@ -138,6 +179,9 @@ export const NoteService = {
           const audioAttachments = finalAttachments.filter(
             (a: any) => a.type === "audio"
           );
+          const videoAttachments = finalAttachments.filter(
+            (a: any) => a.type === "video"
+          );
 
           // OPTIMIZED: Only decrypt the FIRST image for the thumbnail
           const loadedImages = await Promise.all(
@@ -165,17 +209,16 @@ export const NoteService = {
             if (legacyImg) loadedImages.push(legacyImg);
           }
 
-          // Load Audio Attachments
-          const loadedAudios = await Promise.all(
-            audioAttachments.map(async (aud: any) => {
-              return await StorageService.loadEncryptedFile(
-                aud.encryptedPath,
-                masterKey,
-                true,
-                "m4a"
-              );
-            })
-          );
+          // OPTIMIZED: Do NOT decrypt audio/video for list view OR detail view initially
+          // Just return the encrypted paths. The UI will decrypt them on demand.
+          const loadedAudios = audioAttachments.map((a: any) => ({
+            originalUri: a.encryptedPath, // Keep track of the encrypted path
+            isEncrypted: true,
+          }));
+          const loadedVideos = videoAttachments.map((v: any) => ({
+            originalUri: v.encryptedPath,
+            isEncrypted: true,
+          }));
 
           // Legacy Audio Fallback
           if (note.audioUri) {
@@ -203,6 +246,7 @@ export const NoteService = {
             content: safeDecrypt(note.content, ""),
             images: loadedImages.filter((i: any) => i !== null), // Mix of DataURI (0) and Paths (1+)
             audio: loadedAudios.filter((a: any) => a !== null), // Array of audio URIs
+            videos: loadedVideos.filter((v: any) => v !== null), // Array of video URIs
             documents: docAttachments,
             isPinned: note.isPinned,
             deletedAt: note.deletedAt,
@@ -260,31 +304,34 @@ export const NoteService = {
     const imageAttachments = finalAttachments.filter(
       (a: any) => a.type === "image"
     );
-
-    // Decrypt ALL images
-    const loadedImages = await Promise.all(
-      imageAttachments.map(async (img: any) => {
-        return await StorageService.loadEncryptedFile(
-          img.encryptedPath,
-          masterKey,
-          false
-        );
-      })
+    const videoAttachments = finalAttachments.filter(
+      (a: any) => a.type === "video"
     );
+
+    // OPTIMIZED: Return encrypted objects for Lazy Loading
+    // The UI will handle decryption (Auto for images, Manual for videos)
+    const loadedImages = imageAttachments.map((img: any) => ({
+      originalUri: img.encryptedPath,
+      isEncrypted: true,
+    }));
+
+    const loadedVideos = videoAttachments.map((vid: any) => ({
+      originalUri: vid.encryptedPath,
+      isEncrypted: true,
+    }));
 
     // Legacy Image Fallback
     if (loadedImages.length === 0 && note.imageUri) {
-      const legacyImg = await StorageService.loadEncryptedFile(
-        note.imageUri,
-        masterKey,
-        false
-      );
-      if (legacyImg) loadedImages.push(legacyImg);
+      // Treat legacy image as encrypted too (it likely is)
+      loadedImages.push({
+        originalUri: note.imageUri,
+        isEncrypted: true,
+      });
     }
 
     return {
-      images: loadedImages.filter((i: any) => i !== null),
-      // We can return other details if needed, but mostly we need images
+      images: loadedImages,
+      videos: loadedVideos,
     };
   },
 
@@ -337,7 +384,8 @@ export const NoteService = {
     content: string,
     masterKey: Buffer,
     imageUri?: string | null,
-    audioUris: string[] = [] // <--- Changed to array of NEW audios
+    audioUris: string[] = [],
+    videoUris: string[] = [] // <--- New video array
   ) {
     let newEncryptedPath = undefined;
 
@@ -373,6 +421,21 @@ export const NoteService = {
         await database.get("attachments").create((att: any) => {
           att.note.set(note);
           att.type = "audio";
+          att.uri = encryptedPath;
+          att.createdAt = new Date();
+        });
+      }
+
+      // Add NEW Video Attachments
+      for (const uri of videoUris) {
+        const encryptedPath = await StorageService.saveEncryptedFile(
+          uri,
+          masterKey,
+          "video_enc"
+        );
+        await database.get("attachments").create((att: any) => {
+          att.note.set(note);
+          att.type = "video";
           att.uri = encryptedPath;
           att.createdAt = new Date();
         });
